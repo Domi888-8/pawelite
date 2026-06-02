@@ -433,6 +433,7 @@
       <form class="contact-form" id="contactForm">
         <input type="text" name="name" placeholder="Your Name / Company *" required>
         <input type="email" name="email" placeholder="Email Address *" required>
+        <input type="text" name="whatsapp" placeholder="WhatsApp / Phone">
         <input type="text" name="product" placeholder="Product of Interest">
         <textarea name="message" placeholder="Tell us about your requirements — target market, quantity, custom needs..."></textarea>
         <button type="submit" class="btn btn-primary" style="align-self:flex-start;">Send Inquiry</button>
@@ -440,15 +441,15 @@
       <div class="contact-info">
         <div class="contact-item">
           <div class="contact-icon">&#128231;</div>
-          <div><h4>Email</h4><p>sales@pawelite.com</p></div>
+          <div><h4>Email</h4><p>brittaemperormt32@gmail.com</p></div>
         </div>
         <div class="contact-item">
           <div class="contact-icon">&#128222;</div>
-          <div><h4>Phone / WhatsApp</h4><p>+86 138 0000 8888</p></div>
+          <div><h4>Phone / WhatsApp</h4><p>+852 57258836</p></div>
         </div>
         <div class="contact-item">
           <div class="contact-icon">&#128205;</div>
-          <div><h4>Headquarters</h4><p>No. 88, Pet Industry Park, Yiwu, Zhejiang, China 322000</p></div>
+          <div><h4>Headquarters</h4><p>浙江义乌</p></div>
         </div>
         <div class="contact-item">
           <div class="contact-icon">&#128340;</div>
@@ -461,7 +462,7 @@
   <!-- FOOTER -->
   <footer class="footer">
     <span>&copy; 2026 PawElite Pet Supplies Co., Ltd. All rights reserved.</span>
-    <span class="admin-link" onclick="openAdmin()" title="Admin Panel">&#9881; Manage Products</span>
+    <span class="admin-link" id="adminLink" style="display:none;" onclick="openAdmin()" title="Admin Panel">&#9881; Manage Products</span>
   </footer>
 </div>
 
@@ -547,6 +548,28 @@
             </tr>
           </thead>
           <tbody id="adminProductTable"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Inquiries -->
+    <div class="admin-section">
+      <h3>&#128232; Inquiries <span class="badge" id="inquiryCount">0</span></h3>
+      <p style="font-size:0.84rem;color:var(--text-light);margin-bottom:12px;">Customer inquiries from the contact form. Only visible on this computer.</p>
+      <div style="overflow-x:auto;">
+        <table class="product-table">
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Name</th>
+              <th>Email</th>
+              <th>WhatsApp</th>
+              <th>Product</th>
+              <th>Message</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="adminInquiryTable"></tbody>
         </table>
       </div>
     </div>
@@ -779,6 +802,29 @@ document.getElementById('contactForm').addEventListener('submit', function(e) {
   e.preventDefault();
   const name = this.name.value.trim();
   if (!name) return;
+  const data = new FormData(this);
+
+  // Send to Formsubmit.co → forwards to email
+  fetch('https://formsubmit.co/ajax/brittaemperormt32@gmail.com', {
+    method: 'POST',
+    body: data
+  }).catch(() => {});
+
+  // Also save to local server if available
+  fetch('/api/inquiry', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      id: Date.now(),
+      name: name,
+      email: this.email.value.trim(),
+      whatsapp: this.whatsapp.value.trim(),
+      product: this.product.value.trim(),
+      message: this.message.value.trim(),
+      time: new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })
+    })
+  }).catch(() => {});
+
   showToast('Thank you, ' + name + '! Your inquiry has been received. We will reply within 24 hours.');
   this.reset();
 });
@@ -786,13 +832,20 @@ document.getElementById('contactForm').addEventListener('submit', function(e) {
 // ============================================
 // ADMIN PANEL
 // ============================================
+function isLocal() {
+  const h = window.location.hostname;
+  return h === 'localhost' || h === '127.0.0.1' || h.startsWith('192.168.');
+}
+
 function openAdmin() {
+  if (!isLocal()) { showToast('Admin panel can only be accessed from this computer.'); return; }
   document.getElementById('storefront').style.display = 'none';
   document.getElementById('adminPanel').classList.add('active');
   document.body.style.overflow = '';
   closeModal();
   cancelEdit();
   renderAdminTable();
+  renderInquiries();
 }
 
 function closeAdmin() {
@@ -932,6 +985,48 @@ function deleteProduct(id) {
 }
 
 // ============================================
+// ADMIN — Inquiries
+// ============================================
+async function loadInquiries() {
+  const res = await fetch('/api/inquiries');
+  return res.ok ? res.json() : [];
+}
+
+async function renderInquiries() {
+  const inquiries = await loadInquiries();
+  const tbody = document.getElementById('adminInquiryTable');
+  document.getElementById('inquiryCount').textContent = inquiries.length;
+
+  if (inquiries.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--text-light);">No inquiries yet. Customer messages will appear here.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = inquiries.map(inq => `
+    <tr>
+      <td style="white-space:nowrap;font-size:0.8rem;">${inq.time}</td>
+      <td><strong>${inq.name}</strong></td>
+      <td><a href="mailto:${inq.email}" style="color:var(--accent);">${inq.email}</a></td>
+      <td>${inq.whatsapp || '-'}</td>
+      <td>${inq.product || '-'}</td>
+      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${inq.message || ''}">${inq.message || '-'}</td>
+      <td><button class="btn btn-danger btn-sm" onclick="deleteInquiry(${inq.id})">&#128465;</button></td>
+    </tr>
+  `).join('');
+}
+
+async function deleteInquiry(id) {
+  if (!confirm('Delete this inquiry?')) return;
+  await fetch('/api/inquiry/delete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id })
+  });
+  renderInquiries();
+  showToast('Inquiry deleted.');
+}
+
+// ============================================
 // TOAST
 // ============================================
 let toastTimer;
@@ -947,6 +1042,10 @@ function showToast(msg) {
 // INIT
 // ============================================
 renderStorefront();
+// Only show admin link on local access
+if (isLocal()) {
+  document.getElementById('adminLink').style.display = '';
+}
 </script>
 
 </body>
